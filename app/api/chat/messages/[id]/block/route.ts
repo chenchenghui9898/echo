@@ -1,15 +1,13 @@
-import { blockChatSender } from "@/lib/ai-lab/storage";
+import { blockChatSender, getChatRequestContext } from "@/lib/chat/repository";
 import { PUBLIC_MOOD_ROOM_ID } from "@/lib/chat/config";
-import { getOrCreateChatIdentity } from "@/lib/chat/identity";
 
 export async function PUT(_request: Request, context: RouteContext<"/api/chat/messages/[id]/block">) {
-  const identity = await getOrCreateChatIdentity();
   const { id } = await context.params;
   try {
-    const block = await blockChatSender({
+    const requestContext = await getChatRequestContext();
+    const block = await blockChatSender(requestContext, {
       roomId: PUBLIC_MOOD_ROOM_ID,
       messageId: id,
-      blockerId: identity.id,
     });
     return Response.json({ block });
   } catch (error) {
@@ -22,6 +20,9 @@ export async function PUT(_request: Request, context: RouteContext<"/api/chat/me
     }
     if (code === "CHAT_BLOCK_SELF") {
       return Response.json({ error: "不能屏蔽自己。" }, { status: 400 });
+    }
+    if (code.startsWith("SUPABASE_") || code === "INVALID_ECHO_DATA_BACKEND") {
+      return Response.json({ error: "群聊服务尚未正确配置。" }, { status: 503 });
     }
     return Response.json({ error: "屏蔽失败，请稍后重试。" }, { status: 500 });
   }

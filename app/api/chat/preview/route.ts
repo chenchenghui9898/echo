@@ -1,16 +1,20 @@
-import { getChatRoomPreview } from "@/lib/ai-lab/storage";
+import { getPublicChatRoomPreview } from "@/lib/chat/repository";
 import { PUBLIC_MOOD_ROOM_ID, PUBLIC_MOOD_ROOM_NAME } from "@/lib/chat/config";
-import { getOrCreateChatIdentity } from "@/lib/chat/identity";
+import { connection } from "next/server";
 
 export async function GET() {
-  const identity = await getOrCreateChatIdentity();
-  const messages = await getChatRoomPreview({
-    roomId: PUBLIC_MOOD_ROOM_ID,
-    viewerUserId: identity.id,
-    limit: 3,
-  });
-  return Response.json(
-    { room: { id: PUBLIC_MOOD_ROOM_ID, name: PUBLIC_MOOD_ROOM_NAME }, messages },
-    { headers: { "Cache-Control": "no-store" } },
-  );
+  await connection();
+  try {
+    const messages = await getPublicChatRoomPreview({
+      roomId: PUBLIC_MOOD_ROOM_ID,
+      limit: 3,
+    });
+    return Response.json(
+      { room: { id: PUBLIC_MOOD_ROOM_ID, name: PUBLIC_MOOD_ROOM_NAME }, messages },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    console.error("Failed to load chat preview", error);
+    return Response.json({ error: "心情群聊暂时无法加载。" }, { status: 503 });
+  }
 }

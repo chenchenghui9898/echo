@@ -13,6 +13,7 @@ type ChatPayload = {
   hasMore: boolean;
   currentUser: Identity;
   config: { maxMessageLength: number; pollIntervalMs: number };
+  syncToken?: string;
 };
 
 const DEFAULT_MAX_LENGTH = 1000;
@@ -85,6 +86,7 @@ export default function MoodChat() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<ChatMessageView[]>([]);
   const hasMoreRef = useRef(false);
+  const syncTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!notice) return;
@@ -126,6 +128,7 @@ export default function MoodChat() {
         hasMoreRef.current = payload.hasMore;
         setMaxLength(payload.config.maxMessageLength);
         setPollInterval(payload.config.pollIntervalMs);
+        syncTokenRef.current = payload.syncToken ?? null;
         window.requestAnimationFrame(() => scrollToBottom("auto"));
       })
       .catch((caught: Error) => {
@@ -149,14 +152,18 @@ export default function MoodChat() {
       busy = true;
       try {
         const shouldFollow = isNearBottom();
+        const syncQuery = syncTokenRef.current
+          ? `&updatedAfter=${encodeURIComponent(syncTokenRef.current)}`
+          : "";
         const response = await fetch(
           latest
-            ? `/api/chat/messages?afterId=${encodeURIComponent(latest.id)}&limit=100`
+            ? `/api/chat/messages?afterId=${encodeURIComponent(latest.id)}&limit=100${syncQuery}`
             : "/api/chat/messages",
           { cache: "no-store" },
         );
         if (!response.ok || cancelled) return;
         const payload = (await response.json()) as ChatPayload;
+        syncTokenRef.current = payload.syncToken ?? syncTokenRef.current;
         if (!payload.messages.length) return;
         commitMessages(mergeMessages(messagesRef.current, payload.messages));
         if (shouldFollow) {

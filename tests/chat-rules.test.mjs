@@ -7,6 +7,10 @@ import {
   validateChatReport,
   validateChatStyleFeedback,
 } from "../lib/chat/rules.ts";
+import {
+  getEchoDataBackend,
+  getSupabasePublicConfig,
+} from "../lib/supabase/config.ts";
 
 test("消息正文会去除首尾空白并保留内部换行", () => {
   const result = validateChatContent("  第一行\n第二行  ", 1000);
@@ -42,4 +46,24 @@ test("AI 风格负反馈需要原因或具体说明，正反馈会清空负面�
   assert.deepEqual(dislike.reasons, ["ai_heavy", "vague"]);
   const like = validateChatStyleFeedback({ type: "like", reasons: ["vague"], note: "" });
   assert.deepEqual(like.reasons, []);
+});
+
+test("群聊数据源默认使用 JSON，并且只接受显式支持的配置", () => {
+  assert.equal(getEchoDataBackend({}), "json");
+  assert.equal(getEchoDataBackend({ ECHO_DATA_BACKEND: "supabase" }), "supabase");
+  assert.throws(
+    () => getEchoDataBackend({ ECHO_DATA_BACKEND: "unknown" }),
+    /INVALID_ECHO_DATA_BACKEND/,
+  );
+});
+
+test("Supabase 数据源缺少公开配置时会明确失败", () => {
+  assert.throws(() => getSupabasePublicConfig({}), /SUPABASE_PUBLIC_CONFIG_MISSING/);
+  assert.deepEqual(
+    getSupabasePublicConfig({
+      NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "publishable-test",
+    }),
+    { url: "https://example.supabase.co", publishableKey: "publishable-test" },
+  );
 });

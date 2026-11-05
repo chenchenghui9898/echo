@@ -1,10 +1,8 @@
-import { upsertChatMessageReport } from "@/lib/ai-lab/storage";
+import { getChatRequestContext, upsertChatMessageReport } from "@/lib/chat/repository";
 import { PUBLIC_MOOD_ROOM_ID } from "@/lib/chat/config";
-import { getOrCreateChatIdentity } from "@/lib/chat/identity";
 import { validateChatReport } from "@/lib/chat/rules";
 
 export async function PUT(request: Request, context: RouteContext<"/api/chat/messages/[id]/reports">) {
-  const identity = await getOrCreateChatIdentity();
   const { id } = await context.params;
   let payload: Record<string, unknown>;
   try {
@@ -17,10 +15,10 @@ export async function PUT(request: Request, context: RouteContext<"/api/chat/mes
     return Response.json({ error: validation.error }, { status: 400 });
   }
   try {
-    const report = await upsertChatMessageReport({
+    const requestContext = await getChatRequestContext();
+    const report = await upsertChatMessageReport(requestContext, {
       roomId: PUBLIC_MOOD_ROOM_ID,
       messageId: id,
-      reporterId: identity.id,
       reason: validation.reason,
       note: validation.note,
     });
@@ -32,6 +30,9 @@ export async function PUT(request: Request, context: RouteContext<"/api/chat/mes
     }
     if (code === "CHAT_REPORT_OWN_MESSAGE") {
       return Response.json({ error: "不能举报自己的消息。" }, { status: 400 });
+    }
+    if (code.startsWith("SUPABASE_") || code === "INVALID_ECHO_DATA_BACKEND") {
+      return Response.json({ error: "群聊服务尚未正确配置。" }, { status: 503 });
     }
     return Response.json({ error: "举报提交失败，请稍后重试。" }, { status: 500 });
   }

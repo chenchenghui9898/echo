@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(22);
+select plan(25);
 
 insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data)
 values
@@ -120,6 +120,23 @@ select throws_ok(
   $$insert into public.ai_personas (id, display_name) values ('forged_persona', '伪造人格')$$,
   '42501', null,
   'ordinary client cannot create AI persona configuration'
+);
+
+select lives_ok(
+  $$select public.delete_own_chat_message('echo-public-mood', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1')$$,
+  'anonymous Auth user deletes own message through the safe RPC'
+);
+
+select results_eq(
+  $$select status::text, content from public.chat_messages where id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1'$$,
+  $$values ('deleted'::text, '该消息已删除'::text)$$,
+  'deleted message is publicly sanitized'
+);
+
+select throws_ok(
+  $$select count(*) from public.chat_message_deletion_audits$$,
+  '42501', null,
+  'ordinary user has no privilege to read deletion audit content'
 );
 
 select results_eq(

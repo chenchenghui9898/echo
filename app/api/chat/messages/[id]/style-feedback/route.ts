@@ -1,10 +1,8 @@
-import { upsertChatAiStyleFeedback } from "@/lib/ai-lab/storage";
+import { getChatRequestContext, upsertChatAiStyleFeedback } from "@/lib/chat/repository";
 import { PUBLIC_MOOD_ROOM_ID } from "@/lib/chat/config";
-import { getOrCreateChatIdentity } from "@/lib/chat/identity";
 import { validateChatStyleFeedback } from "@/lib/chat/rules";
 
 export async function PUT(request: Request, context: RouteContext<"/api/chat/messages/[id]/style-feedback">) {
-  const identity = await getOrCreateChatIdentity();
   const { id } = await context.params;
   let payload: Record<string, unknown>;
   try {
@@ -21,10 +19,10 @@ export async function PUT(request: Request, context: RouteContext<"/api/chat/mes
     return Response.json({ error: validation.error }, { status: 400 });
   }
   try {
-    const feedback = await upsertChatAiStyleFeedback({
+    const requestContext = await getChatRequestContext();
+    const feedback = await upsertChatAiStyleFeedback(requestContext, {
       roomId: PUBLIC_MOOD_ROOM_ID,
       messageId: id,
-      userId: identity.id,
       type: validation.type,
       reasons: validation.reasons,
       note: validation.note,
@@ -37,6 +35,9 @@ export async function PUT(request: Request, context: RouteContext<"/api/chat/mes
     }
     if (code === "CHAT_STYLE_FEEDBACK_AI_ONLY") {
       return Response.json({ error: "语言风格反馈只适用于 AI 消息。" }, { status: 400 });
+    }
+    if (code.startsWith("SUPABASE_") || code === "INVALID_ECHO_DATA_BACKEND") {
+      return Response.json({ error: "群聊服务尚未正确配置。" }, { status: 503 });
     }
     return Response.json({ error: "反馈保存失败，请稍后重试。" }, { status: 500 });
   }

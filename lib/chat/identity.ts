@@ -18,7 +18,12 @@ export type ChatIdentity = {
   name: string;
 };
 
-export async function getOrCreateChatIdentity(): Promise<ChatIdentity> {
+export function buildChatDisplayName(id: string) {
+  const value = hash(id);
+  return `${ADJECTIVES[value % ADJECTIVES.length]}${NOUNS[Math.floor(value / ADJECTIVES.length) % NOUNS.length]}·${id.slice(0, 4)}`;
+}
+
+export async function getOrCreateLegacyChatIdentity(): Promise<ChatIdentity> {
   const cookieStore = await cookies();
   let id = cookieStore.get(VISITOR_COOKIE)?.value;
   if (!id) {
@@ -31,7 +36,5 @@ export async function getOrCreateChatIdentity(): Promise<ChatIdentity> {
       secure: process.env.NODE_ENV === "production",
     });
   }
-  const value = hash(id);
-  const name = `${ADJECTIVES[value % ADJECTIVES.length]}${NOUNS[Math.floor(value / ADJECTIVES.length) % NOUNS.length]}·${id.slice(0, 4)}`;
-  return { id, name };
+  return { id, name: buildChatDisplayName(id) };
 }

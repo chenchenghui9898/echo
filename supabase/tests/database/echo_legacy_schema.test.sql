@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(22);
+select plan(24);
 
 select has_table('public', 'legacy_import_batches', 'legacy import batches table exists');
 select has_table('public', 'lab_prompt_versions', 'lab prompt versions table exists');
@@ -18,6 +18,8 @@ select has_table('public', 'lab_style_feedback', 'lab style feedback table exist
 select has_table('public', 'chat_message_reports', 'chat reports table exists');
 select has_table('public', 'chat_user_blocks', 'chat blocks table exists');
 select has_table('public', 'chat_ai_style_feedback', 'chat AI style feedback table exists');
+select has_table('public', 'chat_message_deletion_audits', 'private chat deletion audit table exists');
+select has_function('public', 'delete_own_chat_message', array['text', 'uuid'], 'safe chat deletion function exists');
 
 select results_eq(
   $$
@@ -37,10 +39,11 @@ select results_eq(
       'public.lab_style_feedback'::regclass,
       'public.chat_message_reports'::regclass,
       'public.chat_user_blocks'::regclass,
-      'public.chat_ai_style_feedback'::regclass
+      'public.chat_ai_style_feedback'::regclass,
+      'public.chat_message_deletion_audits'::regclass
     ) and relrowsecurity
   $$,
-  $$values (14::bigint)$$,
+  $$values (15::bigint)$$,
   'all migration, archive, and feedback tables have RLS enabled'
 );
 

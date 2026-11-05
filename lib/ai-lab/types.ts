@@ -200,7 +200,7 @@ export type StyleFeedback = {
   updatedAt: string;
 };
 
-export type ChatSenderType = "human" | "ai";
+export type ChatSenderType = "human" | "ai" | "legacy";
 export type ChatMessageStatus = "normal" | "deleted";
 
 export const CHAT_REPORT_REASONS = [

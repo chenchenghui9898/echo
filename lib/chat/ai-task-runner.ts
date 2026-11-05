@@ -35,7 +35,7 @@ async function executeTask(task: { id: string; executionToken?: string; retryCou
       persona,
       context: context.contextMessages.map((message) => ({
         senderName: message.senderName,
-        senderType: message.senderType,
+        senderType: message.senderType === "ai" ? "ai" : "human",
         content: message.content,
         isTrigger: message.id === context.trigger.id,
         replyToName: message.replyToMessageId
