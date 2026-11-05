@@ -1,0 +1,2 @@
+-- Phase 1 intentionally contains no product seed data.
+-- The single public mood room is infrastructure and is created by the migration.

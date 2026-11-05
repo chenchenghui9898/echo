@@ -6,7 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:ai-lab": "node --no-warnings --experimental-strip-types --test tests/ai-lab-feedback.test.mjs",
+    "test:scheduler": "node --no-warnings --experimental-strip-types --test tests/comment-scheduler.test.mjs",
+    "test:content-analysis": "node --no-warnings --experimental-strip-types --test tests/content-analysis.test.mjs",
+    "test:chat": "node --no-warnings --experimental-strip-types --test tests/chat-rules.test.mjs",
+    "test:chat-ai": "node --no-warnings --experimental-strip-types --test tests/chat-ai-planner.test.mjs",
+    "migrate:supabase:prepare": "node --no-warnings --experimental-strip-types scripts/prepare-supabase-data-migration.ts",
+    "eval:chat-ai": "node --no-warnings --experimental-strip-types scripts/evaluate-chat-ai.ts"
   },
   "dependencies": {
     "next": "16.4.2",
@@ -20,6 +27,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
+    "supabase": "^3.0.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
