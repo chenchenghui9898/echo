@@ -2,6 +2,7 @@ import {
   generateDeepSeekFollowUp,
   ModelServiceError,
 } from "@/lib/ai-lab/deepseek";
+import { getModelConfig } from "@/lib/ai-lab/config";
 import {
   appendFollowUpComment,
   saveContentReaction,
@@ -35,6 +36,7 @@ async function generateFollowUp(input: {
   };
 }) {
   try {
+    const modelConfig = getModelConfig("persona_dialogue");
     const generated = await generateDeepSeekFollowUp({
       work: input.context.work.content,
       originalComment: input.context.comment.content,
@@ -42,7 +44,7 @@ async function generateFollowUp(input: {
       trigger: input.trigger,
       persona: input.context.comment.persona,
       systemPrompt: input.context.run.systemPromptSnapshot,
-      config: input.context.run.modelConfig,
+      config: modelConfig,
     });
     const detail = await appendFollowUpComment({
       sourceCommentId: input.sourceCommentId,
@@ -50,6 +52,7 @@ async function generateFollowUp(input: {
       trigger: input.trigger,
       content: generated.comments[0],
       usage: generated.usage,
+      modelConfig,
     });
     return { detail, generationError: null };
   } catch (error) {

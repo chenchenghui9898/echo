@@ -107,6 +107,11 @@ async function requestDeepSeekContent(input: {
     );
   }
 
+  console.info("DeepSeek request", {
+    model: input.config.model,
+    scenario: input.config.modelScenario ?? "legacy_snapshot",
+  });
+
   const requestBody = JSON.stringify({
     model: input.config.model,
     messages: [

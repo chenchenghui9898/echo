@@ -12,6 +12,10 @@ import {
   getDeepSeekRetryDelayMs,
   isRetryableDeepSeekStatus,
 } from "../lib/ai-lab/retry-policy.ts";
+import {
+  DeepSeekModelConfigurationError,
+  selectDeepSeekModel,
+} from "../lib/ai-lab/model-selection.ts";
 
 test("赞同和反对互斥，再次点击会取消", () => {
   assert.equal(toggleContentReaction(null, "agree"), "agree");
@@ -82,4 +86,47 @@ test("DeepSeek 重试采用短暂退避并限制 Retry-After 上限", () => {
   assert.equal(getDeepSeekRetryDelayMs(1, "1"), 1_000);
   assert.equal(getDeepSeekRetryDelayMs(1, "30"), 2_000);
   assert.equal(getDeepSeekRetryDelayMs(1, "invalid"), 600);
+});
+
+test("DeepSeek 场景模型优先于默认模型", () => {
+  const selected = selectDeepSeekModel("chat_intent", {
+    DEEPSEEK_MODEL_DEFAULT: "default-model",
+    DEEPSEEK_MODEL_CHAT_INTENT: "intent-model",
+  });
+
+  assert.deepEqual(selected, {
+    model: "intent-model",
+    source: "DEEPSEEK_MODEL_CHAT_INTENT",
+    usedLegacyDefault: false,
+  });
+});
+
+test("未配置场景模型时回退到默认模型", () => {
+  const selected = selectDeepSeekModel("comment", {
+    DEEPSEEK_MODEL_DEFAULT: "default-model",
+    DEEPSEEK_MODEL_COMMENT: "   ",
+  });
+
+  assert.equal(selected.model, "default-model");
+  assert.equal(selected.source, "DEEPSEEK_MODEL_DEFAULT");
+  assert.equal(selected.usedLegacyDefault, false);
+});
+
+test("默认模型缺失时给出明确的服务端配置错误", () => {
+  assert.throws(
+    () => selectDeepSeekModel("chat_reply", {}),
+    (error) =>
+      error instanceof DeepSeekModelConfigurationError &&
+      error.message.includes("DEEPSEEK_MODEL_DEFAULT_MISSING"),
+  );
+});
+
+test("迁移期间仍可把旧 DEEPSEEK_MODEL 作为默认模型", () => {
+  const selected = selectDeepSeekModel("persona_dialogue", {
+    DEEPSEEK_MODEL: "legacy-default-model",
+  });
+
+  assert.equal(selected.model, "legacy-default-model");
+  assert.equal(selected.source, "DEEPSEEK_MODEL");
+  assert.equal(selected.usedLegacyDefault, true);
 });

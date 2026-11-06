@@ -601,6 +601,7 @@ export async function appendFollowUpComment(input: {
   trigger: Exclude<CommentTrigger, "initial">;
   content: string;
   usage?: TokenUsage;
+  modelConfig: ModelConfigSnapshot;
 }) {
   return serialized(async () => {
     const database = await readDatabase();
@@ -633,6 +634,7 @@ export async function appendFollowUpComment(input: {
       parentCommentId: context.comment.id,
       triggerFeedbackId: input.triggerFeedbackId,
       usage: input.usage,
+      modelConfig: { ...input.modelConfig },
       createdAt: new Date().toISOString(),
     };
     database.comments.push(comment);
@@ -764,7 +766,8 @@ export async function createScheduledPost(input: {
   content: string;
   author: string;
   finalPrompt: InteractionPromptVersion;
-  modelConfig: ModelConfigSnapshot;
+  commentModelConfig: ModelConfigSnapshot;
+  analysisModelConfig: ModelConfigSnapshot;
   plan: Array<{ personaId: string; scheduledAt: string }>;
   analysis: ContentAnalysis;
   analysisPrompt: InteractionPromptVersion;
@@ -791,7 +794,7 @@ export async function createScheduledPost(input: {
       promptVersionId: input.finalPrompt.id,
       promptSnapshot: { ...input.finalPrompt },
       systemPromptSnapshot: buildSystemPrompt(input.finalPrompt.body),
-      modelConfig: { ...input.modelConfig, commentCount: 1 },
+      modelConfig: { ...input.commentModelConfig, commentCount: 1 },
       status: input.plan.length ? "running" : "completed",
       createdAt,
       completedAt: input.plan.length ? undefined : createdAt,
@@ -824,7 +827,7 @@ export async function createScheduledPost(input: {
       postId,
       analysis: input.analysis,
       promptSnapshot: { ...input.analysisPrompt },
-      modelConfig: { ...input.modelConfig, commentCount: 1 },
+      modelConfig: { ...input.analysisModelConfig, commentCount: 1 },
       usage: input.analysisUsage,
       source: input.analysisSource,
       errorMessage: input.analysisErrorMessage,

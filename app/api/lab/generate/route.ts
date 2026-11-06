@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "请选择提示词版本。" }, { status: 400 });
   }
 
-  const modelConfig = getModelConfig();
+  const modelConfig = getModelConfig("comment");
   let runId: string | undefined;
   try {
     const started = await startGeneration({

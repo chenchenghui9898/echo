@@ -35,12 +35,13 @@ export async function POST(request: Request) {
       (item) => item.scope === CATEGORY_PROMPT_SCOPE[type],
     );
     if (!sensorPrompt || !finalPrompt || !strategyPrompt) throw new Error("INTERACTION_PROMPT_NOT_FOUND");
-    const modelConfig = getModelConfig();
+    const contentAnalysisModelConfig = getModelConfig("content_analysis");
+    const commentModelConfig = getModelConfig("comment");
     const analyzed = await analyzeContent({
       content,
       category: type,
       prompt: sensorPrompt,
-      modelConfig,
+      modelConfig: contentAnalysisModelConfig,
     });
     const publishedAt = new Date();
     const plan = createCommentPlan({
@@ -55,7 +56,8 @@ export async function POST(request: Request) {
       content,
       author: "你",
       finalPrompt,
-      modelConfig,
+      commentModelConfig,
+      analysisModelConfig: contentAnalysisModelConfig,
       plan: plan.map((item) => ({ personaId: item.persona.id, scheduledAt: item.scheduledAt })),
       analysis: analyzed.analysis,
       analysisPrompt: sensorPrompt,

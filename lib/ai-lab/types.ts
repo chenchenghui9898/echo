@@ -39,10 +39,19 @@ export type PersonaSnapshot = {
   topicFamiliarity?: Record<string, number>;
 };
 
+export type DeepSeekModelScenario =
+  | "default"
+  | "chat_intent"
+  | "chat_reply"
+  | "content_analysis"
+  | "comment"
+  | "persona_dialogue";
+
 export type ModelConfigSnapshot = {
   provider: "deepseek";
   baseUrl: string;
   model: string;
+  modelScenario?: DeepSeekModelScenario;
   temperature: number;
   maxTokens: number;
   requestTimeoutMs?: number;
@@ -112,6 +121,7 @@ export type CommentRecord = {
   contentAnalysisId?: string;
   strategyPromptSnapshot?: InteractionPromptVersion;
   usage?: TokenUsage;
+  modelConfig?: ModelConfigSnapshot;
   createdAt: string;
 };
 

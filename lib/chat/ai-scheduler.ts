@@ -32,7 +32,7 @@ export async function enqueueAiDecisionForHumanMessage(messageId: string) {
   return enqueueChatIntentDecision({
     roomId: PUBLIC_MOOD_ROOM_ID,
     messageId,
-    modelConfig: getModelConfig(),
+    modelConfig: getModelConfig("chat_intent"),
     classifierPromptVersion: CHAT_AI_INTENT_PROMPT_VERSION,
     replyPromptVersion: CHAT_AI_PROMPT_VERSION,
   });
@@ -71,7 +71,7 @@ export async function scheduleAiForHumanMessage(
       scheduledAt: item.scheduledAt,
       chainDepth: item.chainDepth,
     })),
-    modelConfig: getModelConfig(),
+    modelConfig: getModelConfig("chat_reply"),
     promptVersion: CHAT_AI_PROMPT_VERSION,
     maxPendingTasks: config.maxPendingTasks,
   });
@@ -98,7 +98,7 @@ export async function scheduleAiFollowUp(messageId: string, chainDepth: number) 
       scheduledAt: item.scheduledAt,
       chainDepth: item.chainDepth,
     })),
-    modelConfig: getModelConfig(),
+    modelConfig: getModelConfig("chat_reply"),
     promptVersion: CHAT_AI_PROMPT_VERSION,
     maxPendingTasks: config.maxPendingTasks,
   });

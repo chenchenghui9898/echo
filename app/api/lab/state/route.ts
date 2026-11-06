@@ -8,7 +8,7 @@ export async function GET() {
     return Response.json({
       ...state,
       interactionPromptVersions,
-      modelConfig: getModelConfig(),
+      modelConfig: getModelConfig("comment"),
       keyConfigured: hasDeepSeekApiKey(),
     });
   } catch (error) {

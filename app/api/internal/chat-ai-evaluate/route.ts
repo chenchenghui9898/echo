@@ -24,7 +24,7 @@ export async function POST(request: Request) {
         createdAt: new Date().toISOString(),
         isTrigger: true,
       }],
-      config: getModelConfig(),
+      config: getModelConfig("chat_reply"),
     });
     return Response.json({ message: result.message, persona: persona.name });
   } catch (error) {
