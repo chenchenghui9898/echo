@@ -11,6 +11,7 @@ import { getEchoDataBackend, hasSupabaseAdminConfig } from "@/lib/supabase/confi
 import { getChatAiConfig } from "./ai-config";
 import { CHAT_AI_PERSONAS, getChatAiPersona } from "./ai-personas";
 import { scheduleAiFollowUp } from "./ai-scheduler";
+import { processDueChatIntentDecisions } from "./intent-runner";
 
 let processing = false;
 let interval: NodeJS.Timeout | undefined;
@@ -38,6 +39,7 @@ async function executeTask(task: { id: string; executionToken?: string; retryCou
         senderName: message.senderName,
         senderType: message.senderType === "ai" ? "ai" : "human",
         content: message.content,
+        createdAt: message.createdAt,
         isTrigger: message.id === context.trigger.id,
         replyToName: message.replyToMessageId
           ? context.contextMessages.find((item) => item.id === message.replyToMessageId)?.senderName
@@ -75,6 +77,9 @@ export async function processDueChatAiTasks() {
   processing = true;
   try {
     const config = getChatAiConfig();
+    const analyzed = getEchoDataBackend() === "supabase"
+      ? await processDueChatIntentDecisions()
+      : 0;
     const tasks = await claimDueChatAiTasks({
       limit: config.concurrency,
       staleProcessingMs: config.staleProcessingMs,
@@ -86,7 +91,7 @@ export async function processDueChatAiTasks() {
       }])),
     });
     await Promise.all(tasks.map(executeTask));
-    return { skipped: false, claimed: tasks.length };
+    return { skipped: false, analyzed, claimed: tasks.length };
   } finally {
     processing = false;
   }

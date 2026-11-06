@@ -242,6 +242,27 @@ export async function generateDeepSeekContentAnalysis(input: {
   });
 }
 
+export async function generateDeepSeekChatIntentAnalysis(input: {
+  conversation: string;
+  config: ModelConfigSnapshot;
+}) {
+  return requestDeepSeekContent({
+    systemPrompt: `你是 Echo 公共心情群聊的意图分析器，只分析最后一条真人消息是否适合由 AI 群友参与，不生成回复。
+
+结合最近群聊、明确的回复关系、消息时间和当前话题判断。每条消息前的方括号是服务端确认时间（ISO 8601，包含时区），需要据此区分连续对话、长时间后的新话题和跨天消息。情绪与交流意图必须分开：负面情绪不自动等于寻求安慰，快乐分享也不自动等于需要赞美。如果最后一条消息是在回答前文，应识别为 social_response。无法可靠判断时使用 uncertain。
+
+intent 只能是：sharing_feelings、seeking_comfort、seeking_advice、sharing_experience、expressing_opinion、asking_question、casual_chat、simple_statement、announcement、social_response、no_clear_intent、uncertain。
+interaction_target 只能是：group、ai_persona、human、unclear。
+context_dependency 只能是：low、medium、high。
+response_style 是最多四个简短英文标签。reason 只说明分类依据，不写回复建议，不推断用户未表达的心理或经历。
+
+返回严格 JSON：
+{"intent":"asking_question","emotion":"neutral","interaction_target":"group","needs_response":true,"response_style":["casual"],"context_dependency":"medium","reason":"用户向群体提出了一个具体问题","confidence":0.9}`,
+    userPrompt: `最近群聊如下，箭头标记的是待分析的最后一条真人消息：\n${input.conversation}`,
+    config: { ...input.config, temperature: 0.15, maxTokens: 500, commentCount: 1 },
+  });
+}
+
 export async function generateDeepSeekComments(input: {
   work: string;
   systemPrompt: string;
@@ -321,6 +342,7 @@ export async function generateDeepSeekChatMessage(input: {
     senderName: string;
     senderType: "human" | "ai";
     content: string;
+    createdAt: string;
     isTrigger: boolean;
     replyToName?: string;
   }>;
@@ -330,7 +352,7 @@ export async function generateDeepSeekChatMessage(input: {
     const identity = message.senderType === "ai" ? `${message.senderName}（AI）` : message.senderName;
     const relation = message.replyToName ? ` [回复 ${message.replyToName}]` : "";
     const marker = message.isTrigger ? " ← 本次必须回应的消息" : "";
-    return `${identity}${relation}：${message.content}${marker}`;
+    return `[${message.createdAt}] ${identity}${relation}：${message.content}${marker}`;
   }).join("\n");
   const response = await requestDeepSeekContent({
     systemPrompt: `你在 Echo 的公共心情群聊中扮演长期 AI 群友“${input.persona.name}”。页面会明确显示你的 AI 身份。你只需要说一条此刻真正想说的话，不要完成评论、咨询或总结任务。
@@ -348,6 +370,7 @@ export async function generateDeepSeekChatMessage(input: {
 
 群聊要求：
 - 标有“← 本次必须回应的消息”的内容是这次任务的触发消息。即使它后面已经出现新消息，也必须回应它；后续消息只作为群聊背景，不得改成回应最新一条。
+- 每条消息前的方括号是服务端确认时间（ISO 8601，包含时区）。用它判断消息间隔、跨天和话题是否仍连续；除非时间本身与回应有关，不要复述时间。
 - 结合最近上下文接话，保持与回复链一致，不要把每句话都当成文学作品或心理问题。
 - 通常 5～35 个汉字；确实需要时可以稍长，但最多 120 个汉字。
 - 可以赞同、反对、开玩笑、简单回应或基于人格背景分享模拟生活视角；不要编造可核验的现实身份、地址或真实事件。

@@ -17,7 +17,13 @@ export async function POST(request: Request) {
   try {
     const result = await generateDeepSeekChatMessage({
       persona,
-      context: [{ senderName: "测试用户", senderType: "human", content, isTrigger: true }],
+      context: [{
+        senderName: "测试用户",
+        senderType: "human",
+        content,
+        createdAt: new Date().toISOString(),
+        isTrigger: true,
+      }],
       config: getModelConfig(),
     });
     return Response.json({ message: result.message, persona: persona.name });

@@ -4,6 +4,12 @@ import test from "node:test";
 import { getChatAiConfig } from "../lib/chat/ai-config.ts";
 import { CHAT_AI_PERSONAS } from "../lib/chat/ai-personas.ts";
 import { inferChatTopics, planChatAiParticipation } from "../lib/chat/ai-planner.ts";
+import {
+  applyChatIntentContext,
+  decideChatAiReply,
+  inferChatIntentFallback,
+  parseChatIntentAnalysis,
+} from "../lib/chat/intent.ts";
 import { CHAT_AI_EVALUATION_CASES } from "./chat-ai-cases.ts";
 
 function sequence(values) {
@@ -117,4 +123,137 @@ test("最近三十条 AI 占比过高时显著降低普通参与概率", () => {
     },
   });
   assert.equal(plan.length, 0);
+});
+
+test("结构化意图结果会被严格解析，格式错误不会被当作有效判断", () => {
+  const result = parseChatIntentAnalysis(JSON.stringify({
+    intent: "seeking_comfort", emotion: "sad", interaction_target: "group",
+    needs_response: true, response_style: ["empathetic", "casual"],
+    context_dependency: "medium", reason: "明确请求陪伴", confidence: 0.91,
+  }));
+  assert.equal(result.intent, "seeking_comfort");
+  assert.equal(result.needsResponse, true);
+  assert.throws(() => parseChatIntentAnalysis('{"intent":"invented"}'), /CHAT_INTENT/);
+  assert.throws(() => parseChatIntentAnalysis("not json"), /CHAT_INTENT_INVALID_JSON/);
+});
+
+test("意图概率区分求助、闲聊、陈述、通知和无明确意图", () => {
+  const trigger = message();
+  const common = {
+    trigger, parent: null, recentMessages: [trigger], recent10AiCount: 0,
+    recent30AiShare: 0, consecutiveAiCount: 0, random: () => 0.5,
+  };
+  const analysis = (intent, needsResponse = false) => ({
+    intent, emotion: "neutral", interactionTarget: "group", needsResponse,
+    responseStyles: ["casual"], contextDependency: "low", reason: "测试", confidence: 1,
+  });
+  assert.equal(decideChatAiReply({ ...common, analysis: analysis("seeking_advice", true) }).shouldReply, true);
+  assert.equal(decideChatAiReply({ ...common, analysis: analysis("casual_chat") }).shouldReply, false);
+  assert.equal(decideChatAiReply({ ...common, analysis: analysis("simple_statement") }).probability, 0.15);
+  assert.equal(decideChatAiReply({ ...common, analysis: analysis("announcement") }).probability, 0.10);
+  assert.equal(decideChatAiReply({ ...common, analysis: analysis("no_clear_intent") }).probability, 0);
+});
+
+test("群体提问获得加权，但近期 AI 密集时仍受防刷屏限制", () => {
+  const trigger = message({ content: "这个问题该怎么处理？" });
+  const analysis = {
+    intent: "asking_question", emotion: "neutral", interactionTarget: "group",
+    needsResponse: true, responseStyles: ["practical"], contextDependency: "medium",
+    reason: "明确问题", confidence: 0.9,
+  };
+  const normal = decideChatAiReply({
+    analysis, trigger, parent: null, recentMessages: [trigger], recent10AiCount: 0,
+    recent30AiShare: 0, consecutiveAiCount: 0, random: () => 0.75,
+  });
+  assert.equal(normal.shouldReply, true);
+  const crowded = decideChatAiReply({
+    analysis, trigger, parent: null, recentMessages: [trigger], recent10AiCount: 5,
+    recent30AiShare: 0.5, consecutiveAiCount: 2, random: () => 0.6,
+  });
+  assert.equal(crowded.shouldReply, false);
+});
+
+test("用户回答 AI 时识别为上下文延续，并优先保留较高回复概率", () => {
+  const parent = message({ id: "ai-parent", senderType: "ai", senderId: "ai:mengxia", personaId: "mengxia" });
+  const trigger = message({ content: "是的，就是那个。", replyToMessageId: parent.id });
+  const fallback = inferChatIntentFallback({ trigger, parent });
+  assert.equal(fallback.intent, "social_response");
+  assert.equal(fallback.interactionTarget, "ai_persona");
+  const decision = decideChatAiReply({
+    analysis: fallback, trigger, parent, recentMessages: [parent, trigger],
+    recent10AiCount: 2, recent30AiShare: 0.2, consecutiveAiCount: 0, random: () => 0.9,
+  });
+  assert.equal(decision.shouldReply, true);
+  const corrected = applyChatIntentContext({
+    ...fallback, intent: "asking_question", interactionTarget: "group",
+  }, parent);
+  assert.equal(corrected.intent, "social_response");
+  assert.equal(corrected.interactionTarget, "ai_persona");
+});
+
+test("真人之间已经连续交流时，普通 AI 插话概率降低", () => {
+  const recent = [
+    message({ id: "h1", senderId: "human-a" }),
+    message({ id: "h2", senderId: "human-b" }),
+    message({ id: "h3", senderId: "human-a" }),
+  ];
+  const trigger = message({ id: "h4", senderId: "human-b" });
+  const decision = decideChatAiReply({
+    analysis: {
+      intent: "casual_chat", emotion: "neutral", interactionTarget: "group",
+      needsResponse: false, responseStyles: ["casual"], contextDependency: "medium",
+      reason: "闲聊", confidence: 0.8,
+    },
+    trigger, parent: null, recentMessages: [...recent, trigger], recent10AiCount: 0,
+    recent30AiShare: 0, consecutiveAiCount: 0, random: () => 0.3,
+  });
+  assert.equal(decision.humansAreConversing, true);
+  assert.equal(decision.shouldReply, false);
+});
+
+test("模型失败时本地兜底不把负面情绪自动识别为求安慰", () => {
+  const feelings = inferChatIntentFallback({
+    trigger: message({ content: "今天真的很累。" }), parent: null,
+  });
+  assert.equal(feelings.intent, "sharing_feelings");
+  assert.equal(feelings.needsResponse, false);
+  const unclear = inferChatIntentFallback({ trigger: message({ content: "嗯" }), parent: null });
+  assert.equal(unclear.intent, "no_clear_intent");
+  const decision = decideChatAiReply({
+    analysis: unclear, trigger: message({ content: "嗯" }), parent: null,
+    recentMessages: [], recent10AiCount: 0, recent30AiShare: 0,
+    consecutiveAiCount: 0, random: () => 0,
+  });
+  assert.equal(decision.shouldReply, false);
+});
+
+test("十二类群聊情境具有可区分、可复现的回复决策", () => {
+  const neutral = (intent, needsResponse = false, interactionTarget = "group") => ({
+    intent, emotion: "neutral", interactionTarget, needsResponse,
+    responseStyles: ["casual"], contextDependency: "medium", reason: "固定测试集", confidence: 1,
+  });
+  const aiParent = message({ id: "ai-context", senderType: "ai", senderId: "ai:xiaolin", personaId: "xiaolin" });
+  const humanParent = message({ id: "human-context", senderId: "human-b" });
+  const cases = [
+    ["难过并寻求安慰", neutral("seeking_comfort", true), null, 0.85],
+    ["开心但未求回应", { ...neutral("sharing_feelings"), emotion: "happy" }, null, 0.75],
+    ["具体问题", neutral("asking_question", true), null, 0.80],
+    ["生活经历", neutral("sharing_experience"), null, 0.70],
+    ["表达观点", neutral("expressing_opinion"), null, 0.75],
+    ["嗯哦哈哈", neutral("no_clear_intent"), null, 0],
+    ["天气通知", neutral("announcement"), null, 0.10],
+    ["回答 AI", neutral("social_response", true, "ai_persona"), aiParent, 0.94],
+    ["回复真人", neutral("social_response", false, "human"), humanParent, 0.25],
+    ["轻松闲聊", neutral("casual_chat"), null, 0.45],
+    ["简单陈述", neutral("simple_statement"), null, 0.15],
+    ["无法判断", neutral("uncertain"), null, 0],
+  ];
+  for (const [label, analysis, parent, expected] of cases) {
+    const trigger = message({ id: `trigger-${label}`, replyToMessageId: parent?.id });
+    const result = decideChatAiReply({
+      analysis, trigger, parent, recentMessages: parent ? [parent, trigger] : [trigger],
+      recent10AiCount: 0, recent30AiShare: 0, consecutiveAiCount: 0, random: () => 0.99,
+    });
+    assert.equal(Number(result.probability.toFixed(2)), expected, label);
+  }
 });

@@ -5,7 +5,7 @@ import {
   getChatRequestContext,
   listChatMessages,
 } from "@/lib/chat/repository";
-import { scheduleAiForHumanMessage } from "@/lib/chat/ai-scheduler";
+import { enqueueAiDecisionForHumanMessage } from "@/lib/chat/ai-scheduler";
 
 export async function GET(request: Request) {
   let context;
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
     });
     if (result.created) {
       try {
-        await scheduleAiForHumanMessage(result.message.id);
+        await enqueueAiDecisionForHumanMessage(result.message.id);
       } catch (schedulingError) {
         // The human message is already durable. AI scheduling is deliberately
         // best-effort so a worker/configuration outage never loses user content.

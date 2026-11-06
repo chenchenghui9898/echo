@@ -85,6 +85,7 @@ export function planChatAiParticipation(input: {
   random?: () => number;
   now?: Date;
   chainDepth?: number;
+  replyDecisionPassed?: boolean;
   activitySnapshot?: {
     recent10AiCount: number;
     recent30AiShare: number;
@@ -110,7 +111,7 @@ export function planChatAiParticipation(input: {
   const replyProbability = parentPersona
     ? input.config.directReplyProbability * densityFactor
     : input.config.replyProbability * densityFactor;
-  if (random() >= replyProbability) return [];
+  if (!input.replyDecisionPassed && random() >= replyProbability) return [];
 
   const topics = inferChatTopics(input.trigger.content);
   const candidates = enabled.filter((persona) =>
