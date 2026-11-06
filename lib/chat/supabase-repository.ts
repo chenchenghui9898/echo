@@ -11,6 +11,7 @@ import type { ChatIdentity } from "./identity";
 
 type MessageRow = {
   id: string;
+  client_request_id: string | null;
   room_id: string;
   sender_type: "human" | "ai" | "legacy";
   user_id: string | null;
@@ -38,7 +39,7 @@ type StyleFeedbackRow = {
 };
 
 const MESSAGE_COLUMNS = [
-  "id", "room_id", "sender_type", "user_id", "persona_id", "legacy_sender_id",
+  "id", "client_request_id", "room_id", "sender_type", "user_id", "persona_id", "legacy_sender_id",
   "sender_name_snapshot", "sender_avatar_snapshot", "content", "reply_to_message_id",
   "status", "persona_version", "model_config_snapshot", "prompt_version", "created_at",
   "updated_at", "deleted_at",
@@ -121,6 +122,7 @@ async function buildViews(
     const feedback = feedbackByMessage.get(row.id);
     return {
       id: row.id,
+      clientRequestId: row.client_request_id ?? undefined,
       roomId: row.room_id,
       senderId: senderId(row),
       senderType: row.sender_type,
@@ -236,6 +238,7 @@ export async function createSupabaseChatMessage(input: {
   roomId: string;
   content: string;
   replyToMessageId?: string;
+  clientRequestId?: string;
 }) {
   if (input.replyToMessageId) {
     const parent = await getMessageRow(input.supabase, input.roomId, input.replyToMessageId);
@@ -251,13 +254,38 @@ export async function createSupabaseChatMessage(input: {
       sender_name_snapshot: input.identity.name,
       content: input.content,
       reply_to_message_id: input.replyToMessageId ?? null,
+      client_request_id: input.clientRequestId ?? null,
     })
     .select(MESSAGE_COLUMNS)
     .single();
+  if (error?.code === "23505" && input.clientRequestId) {
+    const { data: existing, error: existingError } = await input.supabase
+      .from("chat_messages")
+      .select(MESSAGE_COLUMNS)
+      .eq("user_id", input.identity.id)
+      .eq("client_request_id", input.clientRequestId)
+      .maybeSingle();
+    throwDatabaseError("read_idempotent_message", existingError);
+    if (existing) {
+      const message = (await buildViews(
+        input.supabase,
+        [existing as unknown as MessageRow],
+        { human: new Set(), legacy: new Set() },
+      ))[0];
+      return { message, created: false };
+    }
+  }
   throwDatabaseError("create_message", error);
   if (!data) throw new Error("SUPABASE_CREATE_MESSAGE_EMPTY");
   const row = data as unknown as MessageRow;
-  return (await buildViews(input.supabase, [row], { human: new Set(), legacy: new Set() }))[0];
+  return {
+    message: (await buildViews(
+      input.supabase,
+      [row],
+      { human: new Set(), legacy: new Set() },
+    ))[0],
+    created: true,
+  };
 }
 
 export async function getSupabasePublicChatRoomPreview(input: {
@@ -278,6 +306,7 @@ export async function getSupabasePublicChatRoomPreview(input: {
   const rows = ((data ?? []) as unknown as MessageRow[]).reverse();
   return rows.map((row): ChatMessageView => ({
     id: row.id,
+    clientRequestId: row.client_request_id ?? undefined,
     roomId: row.room_id,
     senderId: senderId(row),
     senderType: row.sender_type,

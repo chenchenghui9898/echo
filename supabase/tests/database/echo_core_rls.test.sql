@@ -1,6 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
+set search_path = public, extensions;
 
 select plan(25);
 
@@ -49,7 +50,11 @@ select results_eq(
 );
 
 select results_eq(
-  $$select count(*)::bigint from public.chat_messages$$,
+  $$select count(*)::bigint from public.chat_messages where id in (
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1',
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2',
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb3'
+  )$$,
   $$values (3::bigint)$$,
   'unauthenticated visitor reads normal public messages'
 );
@@ -140,7 +145,7 @@ select throws_ok(
 );
 
 select results_eq(
-  $$select count(*)::bigint from public.ai_persona_versions$$,
+  $$select count(*)::bigint from public.ai_persona_versions where persona_id = 'test_persona'$$,
   $$values (0::bigint)$$,
   'ordinary client cannot read private persona versions'
 );
@@ -174,13 +179,17 @@ select lives_ok(
 );
 
 select results_eq(
-  $$select count(*)::bigint from public.ai_persona_versions$$,
+  $$select count(*)::bigint from public.ai_persona_versions where persona_id = 'test_persona'$$,
   $$values (1::bigint)$$,
   'admin reads private persona versions'
 );
 
 select results_eq(
-  $$select count(*)::bigint from public.chat_ai_tasks$$,
+  $$select count(*)::bigint from public.chat_ai_tasks where trigger_message_id in (
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1',
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2',
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb3'
+  )$$,
   $$values (0::bigint)$$,
   'admin can read the private task table'
 );

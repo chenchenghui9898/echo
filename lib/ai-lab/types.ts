@@ -223,6 +223,7 @@ export type ChatRoom = {
 
 export type ChatMessage = {
   id: string;
+  clientRequestId?: string;
   roomId: string;
   senderId: string;
   senderType: ChatSenderType;

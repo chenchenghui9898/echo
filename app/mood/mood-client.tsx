@@ -4,6 +4,11 @@ import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } fr
 import Link from "next/link";
 
 import type { ChatMessageView, ChatReportReason, StyleReasonCode } from "@/lib/ai-lab/types";
+import {
+  isOptimisticMessage,
+  mergeDisplayMessages,
+  type DisplayChatMessage,
+} from "@/lib/chat/client-messages";
 import { canGroupChatMessages } from "@/lib/chat/rules";
 import styles from "./mood.module.css";
 
@@ -38,14 +43,6 @@ const STYLE_REASONS: Array<{ value: StyleReasonCode; label: string }> = [
   { value: "other", label: "其他" },
 ];
 
-function mergeMessages(current: ChatMessageView[], incoming: ChatMessageView[]) {
-  const byId = new Map(current.map((message) => [message.id, message]));
-  for (const message of incoming) byId.set(message.id, message);
-  return [...byId.values()].sort(
-    (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
-  );
-}
-
 function formatTime(value: string) {
   const date = new Date(value);
   const now = new Date();
@@ -60,14 +57,13 @@ function summary(content: string) {
 }
 
 export default function MoodChat() {
-  const [messages, setMessages] = useState<ChatMessageView[]>([]);
+  const [messages, setMessages] = useState<DisplayChatMessage[]>([]);
   const [currentUser, setCurrentUser] = useState<Identity | null>(null);
   const [content, setContent] = useState("");
   const [replyingTo, setReplyingTo] = useState<ChatMessageView | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -84,7 +80,8 @@ export default function MoodChat() {
   const [notice, setNotice] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const messagesRef = useRef<ChatMessageView[]>([]);
+  const messagesRef = useRef<DisplayChatMessage[]>([]);
+  const clientOrderRef = useRef(0);
   const hasMoreRef = useRef(false);
   const syncTokenRef = useRef<string | null>(null);
 
@@ -94,7 +91,7 @@ export default function MoodChat() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  const commitMessages = useCallback((next: ChatMessageView[]) => {
+  const commitMessages = useCallback((next: DisplayChatMessage[]) => {
     messagesRef.current = next;
     setMessages(next);
   }, []);
@@ -147,7 +144,9 @@ export default function MoodChat() {
     let cancelled = false;
     let busy = false;
     const poll = async () => {
-      const latest = messagesRef.current.at(-1);
+      const latest = [...messagesRef.current]
+        .reverse()
+        .find((message) => !isOptimisticMessage(message));
       if (busy) return;
       busy = true;
       try {
@@ -165,7 +164,7 @@ export default function MoodChat() {
         const payload = (await response.json()) as ChatPayload;
         syncTokenRef.current = payload.syncToken ?? syncTokenRef.current;
         if (!payload.messages.length) return;
-        commitMessages(mergeMessages(messagesRef.current, payload.messages));
+        commitMessages(mergeDisplayMessages(messagesRef.current, payload.messages));
         if (shouldFollow) {
           window.requestAnimationFrame(() => scrollToBottom());
         } else {
@@ -198,7 +197,7 @@ export default function MoodChat() {
       );
       const payload = (await response.json()) as ChatPayload & { error?: string };
       if (!response.ok) throw new Error(payload.error || "历史消息加载失败。");
-      commitMessages(mergeMessages(payload.messages, messagesRef.current));
+      commitMessages(mergeDisplayMessages(payload.messages, messagesRef.current));
       setHasMore(payload.hasMore);
       hasMoreRef.current = payload.hasMore;
       window.requestAnimationFrame(() => {
@@ -224,7 +223,7 @@ export default function MoodChat() {
       );
       if (!response.ok) break;
       const payload = (await response.json()) as ChatPayload;
-      working = mergeMessages(payload.messages, working);
+      working = mergeDisplayMessages(payload.messages, working);
       canLoad = payload.hasMore;
       attempts += 1;
     }
@@ -242,30 +241,89 @@ export default function MoodChat() {
     });
   }
 
-  async function sendMessage(event?: FormEvent) {
-    event?.preventDefault();
-    const text = content.trim();
-    if (!text || sending) return;
-    setSending(true);
-    setError("");
+  async function deliverMessage(message: DisplayChatMessage) {
     try {
       const response = await fetch("/api/chat/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text, replyToMessageId: replyingTo?.id }),
+        body: JSON.stringify({
+          content: message.content,
+          replyToMessageId: message.replyToMessageId,
+          clientRequestId: message.clientRequestId,
+        }),
       });
       const payload = (await response.json()) as { message?: ChatMessageView; error?: string };
       if (!response.ok || !payload.message) throw new Error(payload.error || "消息发送失败。");
-      commitMessages(mergeMessages(messagesRef.current, [payload.message]));
-      setContent("");
-      setReplyingTo(null);
+      commitMessages(mergeDisplayMessages(messagesRef.current, [payload.message]));
       window.requestAnimationFrame(() => scrollToBottom());
     } catch (caught) {
-      setError((caught as Error).message);
-    } finally {
-      setSending(false);
-      inputRef.current?.focus();
+      commitMessages(messagesRef.current.map((item) =>
+        item.clientRequestId === message.clientRequestId && item.deliveryState === "sending"
+          ? {
+              ...item,
+              deliveryState: "failed",
+              deliveryError: (caught as Error).message || "消息发送失败。",
+            }
+          : item,
+      ));
     }
+  }
+
+  function sendMessage(event?: FormEvent) {
+    event?.preventDefault();
+    const text = content.trim();
+    if (!text || !currentUser) return;
+    const reply = replyingTo;
+    const clientRequestId = crypto.randomUUID();
+    clientOrderRef.current += 1;
+    const now = new Date().toISOString();
+    const optimistic: DisplayChatMessage = {
+      id: `optimistic:${clientRequestId}`,
+      clientRequestId,
+      roomId: "echo-public-mood",
+      senderId: currentUser.id,
+      senderType: "human",
+      senderName: currentUser.name,
+      content: text,
+      replyToMessageId: reply?.id,
+      createdAt: now,
+      updatedAt: now,
+      status: "normal",
+      replyTo: reply
+        ? {
+            id: reply.id,
+            senderName: reply.senderName,
+            content: reply.content,
+            status: reply.status,
+          }
+        : null,
+      styleFeedback: null,
+      deliveryState: "sending",
+      clientOrder: clientOrderRef.current,
+    };
+
+    setContent("");
+    setReplyingTo(null);
+    setError("");
+    commitMessages(mergeDisplayMessages(messagesRef.current, [optimistic]));
+    window.requestAnimationFrame(() => {
+      scrollToBottom();
+      inputRef.current?.focus();
+    });
+    void deliverMessage(optimistic);
+  }
+
+  function retryMessage(message: DisplayChatMessage) {
+    if (message.deliveryState !== "failed" || !message.clientRequestId) return;
+    const retrying = {
+      ...message,
+      deliveryState: "sending" as const,
+      deliveryError: undefined,
+    };
+    commitMessages(messagesRef.current.map((item) =>
+      item.clientRequestId === message.clientRequestId ? retrying : item,
+    ));
+    void deliverMessage(retrying);
   }
 
   async function deleteMessage(message: ChatMessageView) {
@@ -277,7 +335,7 @@ export default function MoodChat() {
       const response = await fetch(`/api/chat/messages/${message.id}`, { method: "DELETE" });
       const payload = await response.json() as { message?: ChatMessageView; error?: string };
       if (!response.ok || !payload.message) throw new Error(payload.error || "删除失败。");
-      commitMessages(mergeMessages(messagesRef.current, [payload.message]));
+      commitMessages(mergeDisplayMessages(messagesRef.current, [payload.message]));
       if (replyingTo?.id === message.id) setReplyingTo(null);
       setNotice("消息已删除");
     } catch (caught) {
@@ -416,8 +474,8 @@ export default function MoodChat() {
                 >
                   <div className={styles.avatar} aria-hidden="true">{grouped ? "" : (message.senderAvatar ?? message.senderName.slice(0, 1))}</div>
                   <div className={styles.messageBody}>
-                    {!grouped && <div className={styles.meta}><strong>{own ? "你" : message.senderName}</strong><span>{message.senderType === "ai" ? "AI" : "普通用户"}</span><time>{formatTime(message.createdAt)}</time></div>}
-                    {message.status === "normal" && (
+                    {!grouped && <div className={styles.meta}><strong>{own ? "你" : message.senderName}</strong><span>{message.senderType === "ai" ? "AI" : "普通用户"}</span><time>{message.deliveryState === "sending" ? "发送中" : message.deliveryState === "failed" ? "发送失败" : formatTime(message.createdAt)}</time></div>}
+                    {message.status === "normal" && !isOptimisticMessage(message) && (
                       <div className={styles.moreWrap}>
                         <button
                           className={styles.moreButton}
@@ -460,9 +518,17 @@ export default function MoodChat() {
                           <span>{message.replyTo.status === "deleted" ? "消息已删除" : summary(message.replyTo.content)}</span>
                         </button>
                       )}
-                      <p>{message.status === "deleted" ? "此消息已删除" : message.content}</p>
+                      <div className={styles.bubbleContent}>
+                        {message.deliveryState === "sending" && (
+                          <span className={styles.sendingSpinner} role="status" aria-label="消息发送中" />
+                        )}
+                        {message.deliveryState === "failed" && (
+                          <span className={styles.failedMark} aria-hidden="true">!</span>
+                        )}
+                        <p>{message.status === "deleted" ? "此消息已删除" : message.content}</p>
+                      </div>
                     </div>
-                    {message.status === "normal" && (
+                    {message.status === "normal" && !isOptimisticMessage(message) && (
                       <div className={styles.messageFooter}>
                         <button className={styles.replyAction} onClick={() => {
                           setReplyingTo(message);
@@ -473,6 +539,12 @@ export default function MoodChat() {
                             {message.styleFeedback.type === "like" ? "已喜欢这种表达" : "已提交表达反馈"}
                           </span>
                         )}
+                      </div>
+                    )}
+                    {message.deliveryState === "failed" && (
+                      <div className={styles.deliveryFailure} role="alert">
+                        <span>{message.deliveryError || "发送失败，消息尚未丢失。"}</span>
+                        <button type="button" onClick={() => retryMessage(message)}>重新发送</button>
                       </div>
                     )}
                   </div>
@@ -510,7 +582,7 @@ export default function MoodChat() {
               maxLength={maxLength}
               aria-label="群聊消息"
             />
-            <button type="submit" disabled={!content.trim() || sending}>{sending ? "发送中" : "发送"}</button>
+            <button type="submit" disabled={!content.trim() || !currentUser}>发送</button>
           </div>
           <div className={styles.composerHint}><span>Enter 发送 · Shift + Enter 换行</span><span>{content.length} / {maxLength}</span></div>
         </form>

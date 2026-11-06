@@ -7,6 +7,19 @@ export function validateChatContent(value: unknown, maxLength: number) {
   return { content, error: null };
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function validateClientRequestId(value: unknown) {
+  if (value === undefined || value === null || value === "") {
+    return { clientRequestId: undefined, error: null };
+  }
+  const clientRequestId = typeof value === "string" ? value.trim() : "";
+  if (!UUID_PATTERN.test(clientRequestId)) {
+    return { clientRequestId: undefined, error: "消息请求标识无效。" };
+  }
+  return { clientRequestId, error: null };
+}
+
 export function canGroupChatMessages(
   previous: { senderId: string; createdAt: string } | undefined,
   current: { senderId: string; createdAt: string },

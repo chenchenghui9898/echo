@@ -16,3 +16,23 @@ export function getSupabasePublicConfig(
   if (!url || !publishableKey) throw new Error("SUPABASE_PUBLIC_CONFIG_MISSING");
   return { url, publishableKey };
 }
+
+export function getSupabaseAdminConfig(
+  environment: NodeJS.ProcessEnv = process.env,
+) {
+  const { url } = getSupabasePublicConfig(environment);
+  const secretKey = environment.SUPABASE_SECRET_KEY?.trim()
+    || environment.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!secretKey) throw new Error("SUPABASE_ADMIN_CONFIG_MISSING");
+  return { url, secretKey };
+}
+
+export function hasSupabaseAdminConfig(
+  environment: NodeJS.ProcessEnv = process.env,
+) {
+  return Boolean(
+    environment.NEXT_PUBLIC_SUPABASE_URL?.trim()
+    && (environment.SUPABASE_SECRET_KEY?.trim()
+      || environment.SUPABASE_SERVICE_ROLE_KEY?.trim()),
+  );
+}

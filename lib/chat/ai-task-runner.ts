@@ -6,7 +6,8 @@ import {
   completeChatAiTask,
   failChatAiTask,
   getChatAiTaskContext,
-} from "@/lib/ai-lab/storage";
+} from "./ai-task-repository";
+import { getEchoDataBackend, hasSupabaseAdminConfig } from "@/lib/supabase/config";
 import { getChatAiConfig } from "./ai-config";
 import { CHAT_AI_PERSONAS, getChatAiPersona } from "./ai-personas";
 import { scheduleAiFollowUp } from "./ai-scheduler";
@@ -93,6 +94,12 @@ export async function processDueChatAiTasks() {
 
 export function startChatAiTaskScheduler() {
   if (interval) return;
+  if (getEchoDataBackend() === "supabase" && !hasSupabaseAdminConfig()) {
+    console.warn(
+      "Supabase AI chat worker is disabled: configure SUPABASE_SECRET_KEY on the server.",
+    );
+    return;
+  }
   const config = getChatAiConfig();
   void processDueChatAiTasks();
   interval = setInterval(() => void processDueChatAiTasks(), config.pollIntervalMs);

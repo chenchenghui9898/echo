@@ -1148,6 +1148,7 @@ export async function createChatMessage(input: {
   senderName: string;
   content: string;
   replyToMessageId?: string;
+  clientRequestId?: string;
 }) {
   return serialized(async () => {
     const database = await readDatabase();
@@ -1161,9 +1162,24 @@ export async function createChatMessage(input: {
     if (input.replyToMessageId && !replyTo) throw new Error("REPLY_MESSAGE_NOT_FOUND");
     if (replyTo?.status === "deleted") throw new Error("REPLY_MESSAGE_DELETED");
 
+    const existing = input.clientRequestId
+      ? database.chatMessages.find(
+          (message) =>
+            message.senderId === input.senderId &&
+            message.clientRequestId === input.clientRequestId,
+        )
+      : undefined;
+    if (existing) {
+      return {
+        message: buildChatMessageView(database, existing, input.senderId),
+        created: false,
+      };
+    }
+
     const createdAt = new Date().toISOString();
     const message: ChatMessage = {
       id: randomUUID(),
+      clientRequestId: input.clientRequestId,
       roomId: input.roomId,
       senderId: input.senderId,
       senderType: input.senderType,
@@ -1176,7 +1192,10 @@ export async function createChatMessage(input: {
     };
     database.chatMessages.push(message);
     await writeDatabase(database);
-    return buildChatMessageView(database, message, input.senderId);
+    return {
+      message: buildChatMessageView(database, message, input.senderId),
+      created: true,
+    };
   });
 }
 

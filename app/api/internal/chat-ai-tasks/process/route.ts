@@ -1,4 +1,4 @@
-import { getChatAiTaskDiagnostics } from "@/lib/ai-lab/storage";
+import { getChatAiTaskDiagnostics } from "@/lib/chat/ai-task-repository";
 import { processDueChatAiTasks } from "@/lib/chat/ai-task-runner";
 
 function authorized(request: Request) {

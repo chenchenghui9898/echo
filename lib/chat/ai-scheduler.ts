@@ -1,10 +1,7 @@
 import "server-only";
 
 import { getModelConfig } from "@/lib/ai-lab/config";
-import {
-  createChatAiTasks,
-  getChatAiPlanningContext,
-} from "@/lib/ai-lab/storage";
+import { createChatAiTasks, getChatAiPlanningContext } from "./ai-task-repository";
 import { CHAT_AI_PROMPT_VERSION, getChatAiConfig } from "./ai-config";
 import { planAiToAiFollowUp, planChatAiParticipation } from "./ai-planner";
 

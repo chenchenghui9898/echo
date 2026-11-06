@@ -1,5 +1,5 @@
 import { CHAT_CONFIG, PUBLIC_MOOD_ROOM_ID } from "@/lib/chat/config";
-import { validateChatContent } from "@/lib/chat/rules";
+import { validateChatContent, validateClientRequestId } from "@/lib/chat/rules";
 import {
   createChatMessage,
   getChatRequestContext,
@@ -77,26 +77,36 @@ export async function POST(request: Request) {
     return Response.json({ error: "请求内容不是有效的 JSON。" }, { status: 400 });
   }
   const validation = validateChatContent(payload.content, CHAT_CONFIG.maxMessageLength);
+  const requestValidation = validateClientRequestId(payload.clientRequestId);
   const content = validation.content;
   const replyToMessageId =
     typeof payload.replyToMessageId === "string" && payload.replyToMessageId.trim()
       ? payload.replyToMessageId.trim()
       : undefined;
   if (validation.error) return Response.json({ error: validation.error }, { status: 400 });
+  if (requestValidation.error) {
+    return Response.json({ error: requestValidation.error }, { status: 400 });
+  }
   try {
-    const message = await createChatMessage(context, {
+    const result = await createChatMessage(context, {
       roomId: PUBLIC_MOOD_ROOM_ID,
       content,
       replyToMessageId,
+      clientRequestId: requestValidation.clientRequestId,
     });
-    if (context.backend === "json") {
+    if (result.created) {
       try {
-        await scheduleAiForHumanMessage(message.id);
+        await scheduleAiForHumanMessage(result.message.id);
       } catch (schedulingError) {
+        // The human message is already durable. AI scheduling is deliberately
+        // best-effort so a worker/configuration outage never loses user content.
         console.error("Failed to schedule AI chat participation", schedulingError);
       }
     }
-    return Response.json({ message, currentUser: context.identity }, { status: 201 });
+    return Response.json(
+      { message: result.message, currentUser: context.identity },
+      { status: result.created ? 201 : 200 },
+    );
   } catch (error) {
     if (
       (error as Error).message === "REPLY_MESSAGE_NOT_FOUND" ||

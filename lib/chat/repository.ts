@@ -120,7 +120,12 @@ export async function listChatMessages(
 
 export async function createChatMessage(
   context: ChatRequestContext,
-  input: { roomId: string; content: string; replyToMessageId?: string },
+  input: {
+    roomId: string;
+    content: string;
+    replyToMessageId?: string;
+    clientRequestId?: string;
+  },
 ) {
   if (context.backend === "json") {
     return createJsonChatMessage({

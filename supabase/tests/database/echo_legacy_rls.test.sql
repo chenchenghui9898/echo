@@ -1,6 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
+set search_path = public, extensions;
 
 select plan(13);
 
@@ -57,13 +58,13 @@ select throws_ok(
 );
 
 select results_eq(
-  $$select count(*)::bigint from public.chat_message_reports$$,
+  $$select count(*)::bigint from public.chat_message_reports where message_id = '77777777-7777-4777-8777-777777777777'$$,
   $$values (1::bigint)$$,
   'user reads own report'
 );
 
 select results_eq(
-  $$select count(*)::bigint from public.chat_ai_style_feedback$$,
+  $$select count(*)::bigint from public.chat_ai_style_feedback where message_id = '77777777-7777-4777-8777-777777777777'$$,
   $$values (1::bigint)$$,
   'user reads own style feedback'
 );
@@ -71,13 +72,13 @@ select results_eq(
 set local request.jwt.claims = '{"sub":"55555555-5555-4555-8555-555555555555","role":"authenticated","app_metadata":{}}';
 
 select results_eq(
-  $$select count(*)::bigint from public.chat_message_reports$$,
+  $$select count(*)::bigint from public.chat_message_reports where message_id = '77777777-7777-4777-8777-777777777777'$$,
   $$values (0::bigint)$$,
   'other user cannot read report'
 );
 
 select results_eq(
-  $$select count(*)::bigint from public.chat_ai_style_feedback$$,
+  $$select count(*)::bigint from public.chat_ai_style_feedback where message_id = '77777777-7777-4777-8777-777777777777'$$,
   $$values (0::bigint)$$,
   'other user cannot read style feedback'
 );
@@ -85,13 +86,13 @@ select results_eq(
 set local request.jwt.claims = '{"sub":"66666666-6666-4666-8666-666666666666","role":"authenticated","app_metadata":{"role":"admin"}}';
 
 select results_eq(
-  $$select count(*)::bigint from public.chat_message_reports$$,
+  $$select count(*)::bigint from public.chat_message_reports where message_id = '77777777-7777-4777-8777-777777777777'$$,
   $$values (1::bigint)$$,
   'admin reads reports'
 );
 
 select results_eq(
-  $$select count(*)::bigint from public.chat_ai_style_feedback$$,
+  $$select count(*)::bigint from public.chat_ai_style_feedback where message_id = '77777777-7777-4777-8777-777777777777'$$,
   $$values (1::bigint)$$,
   'admin reads style feedback'
 );
