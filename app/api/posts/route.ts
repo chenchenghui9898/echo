@@ -1,7 +1,12 @@
 import { getModelConfig } from "@/lib/ai-lab/config";
-import { createScheduledPost, getInteractionPromptVersions, listCommunityPosts } from "@/lib/ai-lab/storage";
+import { getInteractionPromptVersions } from "@/lib/ai-lab/storage";
 import type { PostContentType } from "@/lib/ai-lab/types";
 import { createCommentPlan } from "@/lib/community/planner";
+import {
+  createScheduledPost,
+  getCommunityRequestContext,
+  listCommunityPosts,
+} from "@/lib/community/repository";
 import { analyzeContent } from "@/lib/community/content-sensor";
 import { CATEGORY_PROMPT_SCOPE } from "@/lib/community/prompt-defaults";
 
@@ -12,6 +17,13 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  let context;
+  try {
+    context = await getCommunityRequestContext();
+  } catch (error) {
+    console.error("Failed to initialize community data source", error);
+    return Response.json({ error: "发布服务尚未正确配置。" }, { status: 503 });
+  }
   let payload: Record<string, unknown>;
   try {
     payload = (await request.json()) as Record<string, unknown>;
@@ -50,7 +62,7 @@ export async function POST(request: Request) {
       publishedAt,
       analyzedTopics: analyzed.analysis.topics,
     });
-    const post = await createScheduledPost({
+    const post = await createScheduledPost(context, {
       type,
       title,
       content,

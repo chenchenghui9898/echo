@@ -1,5 +1,5 @@
 import { processDueCommentTasks } from "@/lib/community/task-runner";
-import { getSchedulerDiagnostics } from "@/lib/ai-lab/storage";
+import { getSchedulerDiagnostics } from "@/lib/community/repository";
 
 function authorized(request: Request) {
   const token = process.env.ECHO_WORKER_TOKEN?.trim();

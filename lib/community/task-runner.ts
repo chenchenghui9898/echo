@@ -6,7 +6,7 @@ import {
   completeCommentTask,
   failCommentTask,
   getCommentTaskContext,
-} from "@/lib/ai-lab/storage";
+} from "@/lib/community/repository";
 
 import { getCommunityPersona } from "./personas";
 import { getSchedulerConfig } from "./scheduler-config";
@@ -105,7 +105,12 @@ export async function processDueCommentTasks() {
 export function startCommentTaskScheduler() {
   if (interval) return;
   const config = getSchedulerConfig();
-  void processDueCommentTasks();
-  interval = setInterval(() => void processDueCommentTasks(), config.pollIntervalMs);
+  const processSafely = () => {
+    void processDueCommentTasks().catch((error) => {
+      console.error("Comment task scheduler cycle failed", error);
+    });
+  };
+  processSafely();
+  interval = setInterval(processSafely, config.pollIntervalMs);
   interval.unref();
 }
